@@ -8,8 +8,12 @@ export type Dictionary = DictEntry[];
 
 // 从大型词库导入
 import { LARGE_DICTIONARY } from "./large-dictionary";
+import { SAMPLE_DICTIONARY } from "./sample-dictionary";
 
-export const DEFAULT_DICTIONARY: Dictionary = LARGE_DICTIONARY;
+export const DEFAULT_DICTIONARY: Dictionary = [
+  ...LARGE_DICTIONARY,
+  ...SAMPLE_DICTIONARY,
+];
 
 // 虚词列表（过滤用）
 export const STOP_WORDS = new Set([
