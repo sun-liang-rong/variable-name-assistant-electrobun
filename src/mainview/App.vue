@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import TitleBar from "./components/TitleBar.vue";
 import InputArea from "./components/InputArea.vue";
 import ResultList from "./components/ResultList.vue";
@@ -7,17 +7,19 @@ import HistoryPanel from "./components/HistoryPanel.vue";
 import DictManager from "./components/DictManager.vue";
 import Toast from "./components/Toast.vue";
 import { type NamingMode, type NameResult, generateNames } from "./utils/naming";
-import { segment } from "./utils/tokenizer";
+import { type Token } from "./utils/jieba-tokenizer";
 import { type DictEntry } from "./utils/dictionary";
 import { useDictionary } from "./composables/useDictionary";
 import { useHistory } from "./composables/useHistory";
 import { useConfig } from "./composables/useConfig";
 import { useRpc } from "./composables/useRpc";
+import { useSegment } from "./composables/useSegment";
 
 const { dictionary, addWord, resetDictionary, openDictFile } = useDictionary();
 const { history, addHistory, clearHistory } = useHistory();
 const { config, toggleTheme, toggleAlwaysOnTop } = useConfig();
 const { copyToClipboard, minimizeWindow, maximizeWindow, closeWindow } = useRpc();
+const { doSegment, segmentSync } = useSegment();
 
 const inputText = ref("");
 const mode = ref<NamingMode>("variable");
@@ -25,19 +27,38 @@ const showHistory = ref(false);
 const showDictManager = ref(false);
 const showToast = ref(false);
 const toastMessage = ref("");
+const currentTokens = ref<Token[]>([]);
+const isSegmenting = ref(false);
+
+// 异步分词
+watch([inputText, dictionary], async ([newText, newDict]) => {
+  if (!newText.trim()) {
+    currentTokens.value = [];
+    return;
+  }
+
+  isSegmenting.value = true;
+  try {
+    currentTokens.value = await doSegment(newText, newDict);
+  } catch (error) {
+    console.error("Segment error:", error);
+    // 降级到同步分词
+    currentTokens.value = segmentSync(newText, newDict);
+  } finally {
+    isSegmenting.value = false;
+  }
+}, { immediate: true });
 
 // 生成命名结果
 const results = computed<NameResult[]>(() => {
-  if (!inputText.value.trim()) return [];
-  const tokens = segment(inputText.value, dictionary.value);
-  return generateNames(tokens, dictionary.value, mode.value);
+  if (currentTokens.value.length === 0) return [];
+  return generateNames(currentTokens.value, dictionary.value, mode.value);
 });
 
 // 是否无匹配
 const noMatch = computed(() => {
   if (!inputText.value.trim()) return false;
-  const tokens = segment(inputText.value, dictionary.value);
-  const matched = tokens.filter((t) => t.matched);
+  const matched = currentTokens.value.filter((t) => t.matched);
   return matched.length === 0;
 });
 

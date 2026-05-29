@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"electrobun": "1.18.1",
+		"nodejieba": "^3.5.8",
 		"pinyin-pro": "^3.28.1"
 	},
 	"devDependencies": {
