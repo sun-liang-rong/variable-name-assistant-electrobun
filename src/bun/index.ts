@@ -143,9 +143,13 @@ mainWindow = new BrowserWindow({
   rpc,
 });
 
-// 系统托盘
+// 系统托盘 - 使用 @2x 高清图标
 const tray = new Tray({
-  title: "变量命名助手",
+  title: "",
+  image: "views://icons/trayTemplate@2x.png",
+  template: true,
+  width: 18,
+  height: 18,
 });
 
 tray.setMenu([

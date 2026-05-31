@@ -125,6 +125,7 @@ const emit = defineEmits<{
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   user-select: none;
+  border-radius: 12px 12px 0 0;
 }
 
 .window-controls {

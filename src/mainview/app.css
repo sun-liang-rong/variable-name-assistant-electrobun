@@ -54,11 +54,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   user-select: none;
+  border-radius: 12px;
 }
 
 #app {
   height: 100vh;
   width: 100vw;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 /* 滚动条样式 */
