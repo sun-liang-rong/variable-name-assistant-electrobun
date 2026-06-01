@@ -1,12 +1,15 @@
+/**
+ * 变量名/函数名生成器
+ * 根据分词结果生成 camelCase 命名建议
+ */
+
 import { type Token } from "./tokenizer";
-import { type Dictionary } from "./dictionary";
 
 export type NamingMode = "variable" | "function";
 
 export interface NameResult {
   name: string;
   description: string;
-  source: "dict" | "pinyin" | "mixed";
 }
 
 /**
@@ -19,292 +22,175 @@ function toCamelCase(words: string[]): string {
   return first + rest.join("");
 }
 
-/**
- * 检查是否是布尔状态类词汇
- */
-function isStatusToken(token: Token, dict: Dictionary): boolean {
-  const entry = dict.find((d) => d.zh === token.zh);
-  return entry?.category === "status";
+// 状态词集合
+const STATUS_WORDS = new Set([
+  "loading", "loaded", "disabled", "selected", "active", "expanded", "collapsed",
+  "editable", "readonly", "required", "optional", "valid", "invalid", "empty", "full",
+  "online", "offline", "connected", "disconnected", "processing", "pending",
+  "success", "failed", "error", "visible", "hidden", "enabled", "deleted",
+  "expired", "completed", "cancelled", "closed", "opened", "locked", "unlocked",
+  "published", "unpublished", "submitting", "submitted", "saving", "saved",
+  "draft", "archived", "pinned", "featured", "blocked", "effective", "ineffective",
+  "reviewing", "rejected", "revoked",
+]);
+
+// 动词集合
+const VERB_WORDS = new Set([
+  "get", "set", "create", "delete", "update", "query", "search", "import", "export",
+  "upload", "download", "login", "register", "logout", "submit", "save", "load",
+  "refresh", "reset", "clear", "select", "cancel", "confirm", "validate", "check",
+  "verify", "send", "receive", "request", "init", "destroy", "mount", "unmount",
+  "watch", "bind", "unbind", "trigger", "dispatch", "broadcast", "subscribe",
+  "unsubscribe", "connect", "disconnect", "show", "hide", "expand", "collapse",
+  "scroll", "drag", "drop", "copy", "paste", "cut", "undo", "redo", "navigate",
+  "redirect", "convert", "format", "parse", "encode", "decode", "encrypt", "decrypt",
+  "compress", "decompress", "merge", "split", "concat", "traverse", "iterate",
+  "calc", "compare", "clone", "deepClone", "inject", "provide", "render", "draw",
+  "print", "pause", "resume", "start", "end", "stop", "retry", "rollback",
+  "preload", "throttle", "debounce", "preview", "sync", "backup", "migrate",
+  "upgrade", "downgrade", "crop", "zoom", "rotate", "flip", "mirror", "align",
+  "center", "lock", "unlock", "freeze", "share", "scan", "invite", "join", "leave",
+  "enter", "continue", "play", "mute", "withdraw", "recharge", "transfer",
+  "reconcile", "settle", "approve", "apply", "reject", "archive", "favorite",
+  "like", "comment", "forward", "follow", "block", "pin", "report", "open", "close",
+  "handle", "add", "remove", "edit", "modify", "ship", "receive", "sign",
+  "onboard", "resign", "reimburse",
+]);
+
+function isStatus(word: string): boolean {
+  return STATUS_WORDS.has(word.toLowerCase());
+}
+
+function isVerb(word: string): boolean {
+  return VERB_WORDS.has(word.toLowerCase());
 }
 
 /**
- * 检查是否是动词
+ * 生成变量名推荐（最多5个）
  */
-function isVerbToken(token: Token, dict: Dictionary): boolean {
-  const entry = dict.find((d) => d.zh === token.zh);
-  return entry?.category === "verb";
-}
-
-/**
- * 判断翻译来源
- */
-function getSource(tokens: Token[]): "dict" | "pinyin" | "mixed" {
-  const sources = new Set(tokens.filter((t) => t.matched).map((t) => t.source));
-  if (sources.has("pinyin") && sources.has("dict")) return "mixed";
-  if (sources.has("pinyin")) return "pinyin";
-  return "dict";
-}
-
-/**
- * 生成来源描述
- */
-function sourceLabel(source: "dict" | "pinyin" | "mixed"): string {
-  switch (source) {
-    case "dict": return "词库匹配";
-    case "pinyin": return "拼音转换";
-    case "mixed": return "词库+拼音";
-  }
-}
-
-/**
- * 生成变量名推荐
- * 改进：增加更多命名模式，优化排序
- */
-function generateVariableNames(tokens: Token[], dict: Dictionary): NameResult[] {
+function generateVariableNames(tokens: Token[]): NameResult[] {
   const results: NameResult[] = [];
-  const matchedTokens = tokens.filter((t) => t.matched && t.en);
+  const matched = tokens.filter((t) => t.matched && t.en);
 
-  if (matchedTokens.length === 0) return results;
+  if (matched.length === 0) return results;
 
-  const words = matchedTokens.map((t) => t.en!);
-  const source = getSource(matchedTokens);
-  const hasStatus = matchedTokens.some((t) => isStatusToken(t, dict));
+  const words = matched.map((t) => t.en!);
+  const hasStatus = words.some((w) => isStatus(w));
+  const hasVerb = words.some((w) => isVerb(w));
 
-  // 规则1: 直接组合（最基础）
+  // 规则1: 直接组合
   if (words.length <= 4) {
-    results.push({
-      name: toCamelCase(words),
-      description: `基础组合 · ${sourceLabel(source)}`,
-      source,
-    });
+    results.push({ name: toCamelCase(words), description: "基础组合" });
   }
 
-  // 规则2: 状态词加 is 前缀（布尔变量）
+  // 规则2: is 前缀（布尔状态）
   if (hasStatus && words.length <= 3) {
-    const statusWords = matchedTokens.filter((t) => isStatusToken(t, dict)).map((t) => t.en!);
-    if (statusWords.length > 0) {
-      results.push({
-        name: toCamelCase(["is", ...statusWords]),
-        description: `布尔状态 (is前缀) · ${sourceLabel(source)}`,
-        source,
-      });
-    }
+    const statusWords = words.filter((w) => isStatus(w));
+    results.push({ name: toCamelCase(["is", ...statusWords]), description: "布尔状态 (is前缀)" });
   }
 
-  // 规则3: 如果有多个词，尝试截取核心词（去掉前面的修饰词）
+  // 规则3: 核心词（最后2个词）
   if (words.length > 2) {
-    const coreWords = words.slice(-2);
-    results.push({
-      name: toCamelCase(coreWords),
-      description: `核心词汇组合 · ${sourceLabel(source)}`,
-      source,
-    });
+    results.push({ name: toCamelCase(words.slice(-2)), description: "核心词汇组合" });
   }
 
-  // 规则4: 首字母缩写 + 最后一个完整词
+  // 规则4: 首字母缩写 + 最后一个词
   if (words.length > 2) {
     const abbr = words.slice(0, -1).map((w) => w.charAt(0).toLowerCase()).join("");
-    const lastWord = words[words.length - 1];
-    const abbrName = abbr + lastWord.charAt(0).toUpperCase() + lastWord.slice(1);
-    results.push({
-      name: abbrName,
-      description: `缩写组合 · ${sourceLabel(source)}`,
-      source,
-    });
+    const last = words[words.length - 1];
+    results.push({ name: abbr + last.charAt(0).toUpperCase() + last.slice(1), description: "缩写组合" });
   }
 
-  // 规则5: 取前3个词
+  // 规则5: 前3个词
   if (words.length > 3) {
-    results.push({
-      name: toCamelCase(words.slice(0, 3)),
-      description: `精简组合（前3词） · ${sourceLabel(source)}`,
-      source,
-    });
+    results.push({ name: toCamelCase(words.slice(0, 3)), description: "精简组合（前3词）" });
   }
 
-  // 规则6: 如果第一个词是名词，尝试名词+名词组合
-  if (words.length >= 2) {
-    const firstWord = words[0];
-    const restWords = words.slice(1);
-    if (restWords.length > 0) {
-      results.push({
-        name: toCamelCase([firstWord, ...restWords]),
-        description: `名词组合 · ${sourceLabel(source)}`,
-        source,
-      });
+  // 规则6: 动词+名词
+  if (hasVerb) {
+    const verb = words.find((w) => isVerb(w));
+    const nouns = words.filter((w) => !isVerb(w) && !isStatus(w));
+    if (verb && nouns.length > 0) {
+      results.push({ name: toCamelCase([verb, ...nouns]), description: "动词+名词组合" });
     }
   }
 
-  // 规则7: 如果有状态词，尝试状态+名词组合
+  // 规则7: 状态+名词
   if (hasStatus && words.length >= 2) {
-    const statusWord = matchedTokens.find((t) => isStatusToken(t, dict))?.en;
-    const nounWords = matchedTokens.filter((t) => !isStatusToken(t, dict)).map((t) => t.en!);
-    if (statusWord && nounWords.length > 0) {
-      results.push({
-        name: toCamelCase([statusWord, ...nounWords]),
-        description: `状态+名词组合 · ${sourceLabel(source)}`,
-        source,
-      });
+    const status = words.find((w) => isStatus(w));
+    const nouns = words.filter((w) => !isStatus(w));
+    if (status && nouns.length > 0) {
+      results.push({ name: toCamelCase([status, ...nouns]), description: "状态+名词组合" });
     }
   }
 
-  // 规则8: 如果有动词，尝试动词+名词组合（变量名风格）
-  const verbTokens = matchedTokens.filter((t) => isVerbToken(t, dict));
-  const nounTokens = matchedTokens.filter((t) => !isVerbToken(t, dict) && !isStatusToken(t, dict));
-  if (verbTokens.length > 0 && nounTokens.length > 0) {
-    const verb = verbTokens[0].en!;
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase([verb, ...nouns]),
-      description: `动词+名词组合 · ${sourceLabel(source)}`,
-      source,
-    });
-  }
-
-  // 去重并排序
+  // 去重，最多5个
   const seen = new Set<string>();
-  return results
-    .filter((r) => {
-      if (seen.has(r.name)) return false;
-      seen.add(r.name);
-      return true;
-    })
-    .sort((a, b) => {
-      // 排序优先级：词库匹配 > 拼音匹配 > 混合匹配
-      const sourceOrder = { dict: 0, pinyin: 1, mixed: 2 };
-      return sourceOrder[a.source] - sourceOrder[b.source];
-    })
-    .slice(0, 5);
+  return results.filter((r) => {
+    if (seen.has(r.name)) return false;
+    seen.add(r.name);
+    return true;
+  }).slice(0, 5);
 }
 
 /**
- * 生成函数名推荐
- * 改进：增加更多命名模式，优化排序
+ * 生成函数名推荐（最多5个）
  */
-function generateFunctionNames(tokens: Token[], dict: Dictionary): NameResult[] {
+function generateFunctionNames(tokens: Token[]): NameResult[] {
   const results: NameResult[] = [];
-  const matchedTokens = tokens.filter((t) => t.matched && t.en);
+  const matched = tokens.filter((t) => t.matched && t.en);
 
-  if (matchedTokens.length === 0) return results;
+  if (matched.length === 0) return results;
 
-  const words = matchedTokens.map((t) => t.en!);
-  const source = getSource(matchedTokens);
+  const words = matched.map((t) => t.en!);
+  const verbs = words.filter((w) => isVerb(w));
+  const nouns = words.filter((w) => !isVerb(w) && !isStatus(w));
 
-  // 找出动词和名词
-  const verbTokens = matchedTokens.filter((t) => isVerbToken(t, dict));
-  const nounTokens = matchedTokens.filter((t) => !isVerbToken(t, dict) && !isStatusToken(t, dict));
-
-  // 规则1: 如果第一个词是动词，直接组合（最常见）
-  if (verbTokens.length > 0 && nounTokens.length > 0) {
-    const verb = verbTokens[0].en!;
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase([verb, ...nouns]),
-      description: `动词+名词组合 · ${sourceLabel(source)}`,
-      source,
-    });
+  // 规则1: 动词+名词
+  if (verbs.length > 0 && nouns.length > 0) {
+    results.push({ name: toCamelCase([verbs[0], ...nouns]), description: "动词+名词组合" });
   }
 
-  // 规则2: 如果没有明确动词，用 handle 前缀（事件处理）
-  if (verbTokens.length === 0) {
-    results.push({
-      name: toCamelCase(["handle", ...words]),
-      description: `handle 前缀（事件处理） · ${sourceLabel(source)}`,
-      source,
-    });
+  // 规则2: handle 前缀（无动词时）
+  if (verbs.length === 0) {
+    results.push({ name: toCamelCase(["handle", ...words]), description: "handle 前缀（事件处理）" });
   }
 
-  // 规则3: 如果有动词，用动词 + 精简名词
-  if (verbTokens.length > 0) {
-    const verb = verbTokens[0].en!;
-    if (nounTokens.length > 1) {
-      const lastNoun = nounTokens[nounTokens.length - 1].en!;
-      results.push({
-        name: toCamelCase([verb, lastNoun]),
-        description: `动词+核心名词 · ${sourceLabel(source)}`,
-        source,
-      });
-    }
+  // 规则3: 动词+核心名词
+  if (verbs.length > 0 && nouns.length > 1) {
+    results.push({ name: toCamelCase([verbs[0], nouns[nouns.length - 1]]), description: "动词+核心名词" });
   }
 
-  // 规则4: on + 名词（事件监听风格）
-  if (nounTokens.length > 0) {
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase(["on", ...nouns]),
-      description: `on 前缀（事件监听） · ${sourceLabel(source)}`,
-      source,
-    });
+  // 规则4: on 前缀
+  if (nouns.length > 0) {
+    results.push({ name: toCamelCase(["on", ...nouns]), description: "on 前缀（事件监听）" });
   }
 
-  // 规则5: 直接组合所有词
+  // 规则5: 直接组合
   if (results.length < 2 && words.length <= 4) {
-    results.push({
-      name: toCamelCase(words),
-      description: `直接组合 · ${sourceLabel(source)}`,
-      source,
-    });
+    results.push({ name: toCamelCase(words), description: "直接组合" });
   }
 
-  // 规则6: 如果有多个动词，用第一个动词 + 名词
-  if (verbTokens.length > 1 && nounTokens.length > 0) {
-    const firstVerb = verbTokens[0].en!;
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase([firstVerb, ...nouns]),
-      description: `首动词+名词组合 · ${sourceLabel(source)}`,
-      source,
-    });
+  // 规则6: 名词+handler
+  if (verbs.length === 0 && nouns.length > 0) {
+    results.push({ name: toCamelCase([...nouns, "handler"]), description: "名词+handler后缀" });
   }
 
-  // 规则7: 如果有状态词，用状态词 + 名词
-  const statusTokens = matchedTokens.filter((t) => isStatusToken(t, dict));
-  if (statusTokens.length > 0 && nounTokens.length > 0) {
-    const statusWord = statusTokens[0].en!;
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase([statusWord, ...nouns]),
-      description: `状态+名词组合 · ${sourceLabel(source)}`,
-      source,
-    });
-  }
-
-  // 规则8: 如果只有名词，用名词 + 后缀
-  if (verbTokens.length === 0 && nounTokens.length > 0) {
-    const nouns = nounTokens.map((t) => t.en!);
-    results.push({
-      name: toCamelCase([...nouns, "handler"]),
-      description: `名词+handler后缀 · ${sourceLabel(source)}`,
-      source,
-    });
-  }
-
-  // 去重并排序
+  // 去重，最多5个
   const seen = new Set<string>();
-  return results
-    .filter((r) => {
-      if (seen.has(r.name)) return false;
-      seen.add(r.name);
-      return true;
-    })
-    .sort((a, b) => {
-      // 排序优先级：词库匹配 > 拼音匹配 > 混合匹配
-      const sourceOrder = { dict: 0, pinyin: 1, mixed: 2 };
-      return sourceOrder[a.source] - sourceOrder[b.source];
-    })
-    .slice(0, 5);
+  return results.filter((r) => {
+    if (seen.has(r.name)) return false;
+    seen.add(r.name);
+    return true;
+  }).slice(0, 5);
 }
 
 /**
  * 根据模式生成命名推荐
  */
-export function generateNames(
-  tokens: Token[],
-  dict: Dictionary,
-  mode: NamingMode
-): NameResult[] {
+export function generateNames(tokens: Token[], mode: NamingMode): NameResult[] {
   if (mode === "variable") {
-    return generateVariableNames(tokens, dict);
+    return generateVariableNames(tokens);
   }
-  return generateFunctionNames(tokens, dict);
+  return generateFunctionNames(tokens);
 }

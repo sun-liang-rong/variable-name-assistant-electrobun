@@ -4,55 +4,35 @@ import TitleBar from "./components/TitleBar.vue";
 import InputArea from "./components/InputArea.vue";
 import ResultList from "./components/ResultList.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
-import DictManager from "./components/DictManager.vue";
 import Toast from "./components/Toast.vue";
 import { type NamingMode, type NameResult, generateNames } from "./utils/naming";
-import { type Token } from "./utils/jieba-tokenizer";
-import { type DictEntry } from "./utils/dictionary";
-import { useDictionary } from "./composables/useDictionary";
+import { type Token } from "./utils/tokenizer";
 import { useHistory } from "./composables/useHistory";
 import { useConfig } from "./composables/useConfig";
 import { useRpc } from "./composables/useRpc";
 import { useSegment } from "./composables/useSegment";
 
-const { dictionary, addWord, resetDictionary, openDictFile } = useDictionary();
 const { history, addHistory, clearHistory } = useHistory();
 const { config, toggleTheme, toggleAlwaysOnTop } = useConfig();
 const { copyToClipboard, minimizeWindow, maximizeWindow, closeWindow } = useRpc();
-const { doSegment, segmentSync } = useSegment();
+const { doSegment } = useSegment();
 
 const inputText = ref("");
 const mode = ref<NamingMode>("variable");
 const showHistory = ref(false);
-const showDictManager = ref(false);
 const showToast = ref(false);
 const toastMessage = ref("");
 const currentTokens = ref<Token[]>([]);
-const isSegmenting = ref(false);
 
-// 异步分词
-watch([inputText, dictionary], async ([newText, newDict]) => {
-  if (!newText.trim()) {
-    currentTokens.value = [];
-    return;
-  }
-
-  isSegmenting.value = true;
-  try {
-    currentTokens.value = await doSegment(newText, newDict);
-  } catch (error) {
-    console.error("Segment error:", error);
-    // 降级到同步分词
-    currentTokens.value = segmentSync(newText, newDict);
-  } finally {
-    isSegmenting.value = false;
-  }
+// 分词
+watch(inputText, (newText) => {
+  currentTokens.value = doSegment(newText);
 }, { immediate: true });
 
 // 生成命名结果
 const results = computed<NameResult[]>(() => {
   if (currentTokens.value.length === 0) return [];
-  return generateNames(currentTokens.value, dictionary.value, mode.value);
+  return generateNames(currentTokens.value, mode.value);
 });
 
 // 是否无匹配
@@ -85,22 +65,6 @@ function handleSelectHistory(input: string) {
 // 清空输入
 function handleClear() {
   inputText.value = "";
-}
-
-// 添加词汇
-async function handleAddWord(entry: DictEntry) {
-  await addWord(entry.zh, entry.en, entry.category);
-  toastMessage.value = "添加成功";
-  showToast.value = true;
-}
-
-// 重置词库
-async function handleResetDict() {
-  if (confirm("确定要重置词库为默认状态吗？")) {
-    await resetDictionary();
-    toastMessage.value = "词库已重置";
-    showToast.value = true;
-  }
 }
 </script>
 
@@ -145,17 +109,6 @@ async function handleResetDict() {
         </svg>
         历史
       </button>
-      <button class="bottom-btn" @click="showDictManager = true">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path
-            d="M2 3h10M2 7h10M2 11h6"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linecap="round"
-          />
-        </svg>
-        词库
-      </button>
     </div>
 
     <HistoryPanel
@@ -164,14 +117,6 @@ async function handleResetDict() {
       @select="handleSelectHistory"
       @clear="clearHistory"
       @close="showHistory = false"
-    />
-
-    <DictManager
-      :show="showDictManager"
-      @add="handleAddWord"
-      @reset="handleResetDict"
-      @open-file="openDictFile"
-      @close="showDictManager = false"
     />
 
     <Toast
@@ -190,6 +135,7 @@ async function handleResetDict() {
   background: var(--bg-primary);
   position: relative;
   overflow: hidden;
+  border-radius: 12px;
 }
 
 .bottom-bar {
@@ -198,6 +144,7 @@ async function handleResetDict() {
   padding: 8px 12px;
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
+  border-radius: 0 0 12px 12px;
 }
 
 .bottom-btn {
